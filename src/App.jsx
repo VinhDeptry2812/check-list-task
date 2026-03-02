@@ -1,4 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { 
+  auth, db, signInAnonymously, onAuthStateChanged, 
+  doc, setDoc, getDoc, onSnapshot 
+} from "./firebase";
 
 const SECTIONS = [
   {
@@ -184,11 +188,83 @@ const PRIORITY_CONFIG = {
 
 export default function App() {
   const totalItems = SECTIONS.reduce((sum, s) => sum + s.items.length, 0);
-  const [checked, setChecked] = useState({});
+  
+  // Load từ localStorage khi mount
+  const [checked, setChecked] = useState(() => {
+    const saved = localStorage.getItem("checklist_checked");
+    return saved ? JSON.parse(saved) : {};
+  });
+  
   const [filter, setFilter] = useState("all");
   const [openSections, setOpenSections] = useState(
     Object.fromEntries(SECTIONS.map((s) => [s.id, true]))
   );
+  
+  const [userId, setUserId] = useState(null);
+  const [syncStatus, setSyncStatus] = useState("offline"); // offline, syncing, synced
+  const [lastSync, setLastSync] = useState(null);
+
+  // Firebase Auth - Auto login
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUserId(user.uid);
+        setSyncStatus("syncing");
+        
+        // Load từ Firestore
+        try {
+          const docRef = doc(db, "checklists", user.uid);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const firebaseData = docSnap.data().checked || {};
+            setChecked(firebaseData);
+            localStorage.setItem("checklist_checked", JSON.stringify(firebaseData));
+          }
+          setSyncStatus("synced");
+          setLastSync(new Date());
+        } catch (err) {
+          console.error("Load từ Firestore lỗi:", err);
+          setSyncStatus("offline");
+        }
+        
+        // Real-time listen changes từ Firestore
+        const unsubscribeFirestore = onSnapshot(doc(db, "checklists", user.uid), (doc) => {
+          if (doc.exists()) {
+            const firebaseData = doc.data().checked || {};
+            setChecked(firebaseData);
+            localStorage.setItem("checklist_checked", JSON.stringify(firebaseData));
+            setSyncStatus("synced");
+            setLastSync(new Date());
+          }
+        });
+        
+        return () => unsubscribeFirestore();
+      } else {
+        // Auto login anonymous
+        signInAnonymously(auth).catch(err => console.error("Auth lỗi:", err));
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
+
+  // Lưu checked vào localStorage + Firestore
+  useEffect(() => {
+    localStorage.setItem("checklist_checked", JSON.stringify(checked));
+    
+    if (userId) {
+      setSyncStatus("syncing");
+      setDoc(doc(db, "checklists", userId), { checked }, { merge: true })
+        .then(() => {
+          setSyncStatus("synced");
+          setLastSync(new Date());
+        })
+        .catch(err => {
+          console.error("Sync lỗi:", err);
+          setSyncStatus("offline");
+        });
+    }
+  }, [checked, userId]);
 
   const toggle = (id) => setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
   const toggleSection = (id) => setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -234,6 +310,20 @@ export default function App() {
           <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 28 }}>
             {totalItems} chức năng · 10 nhóm · Tick vào để đánh dấu hoàn thành
           </p>
+          
+          {/* SYNC STATUS */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontSize: 12, color: "#64748b" }}>
+            <span style={{ 
+              display: "inline-block", 
+              width: 8, 
+              height: 8, 
+              borderRadius: "50%",
+              background: syncStatus === "synced" ? "#10b981" : syncStatus === "syncing" ? "#f59e0b" : "#64748b"
+            }}></span>
+            {syncStatus === "synced" && `☁️ Synced ${lastSync ? 'at ' + lastSync.toLocaleTimeString() : ''}`}
+            {syncStatus === "syncing" && "⏳ Syncing..."}
+            {syncStatus === "offline" && "📱 Offline (localStorage)"}
+          </div>
 
           {/* PROGRESS */}
           <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 12, padding: "16px 20px" }}>
@@ -284,6 +374,14 @@ export default function App() {
           ))}
           <button className="filter-btn" onClick={() => setChecked({})} style={{ marginLeft: "auto", padding: "7px 16px", borderRadius: 99, fontSize: 13, fontWeight: 600, border: "1.5px solid rgba(255,255,255,0.1)", background: "transparent", color: "#64748b" }}>
             ↺ Reset
+          </button>
+          <button className="filter-btn" onClick={() => {
+            const link = document.createElement('a');
+            link.href = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(checked, null, 2));
+            link.download = 'checklist-' + new Date().toISOString().slice(0, 10) + '.json';
+            link.click();
+          }} style={{ padding: "7px 16px", borderRadius: 99, fontSize: 13, fontWeight: 600, border: "1.5px solid rgba(255,255,255,0.1)", background: "transparent", color: "#64748b" }}>
+            ⬇️ Export
           </button>
         </div>
       </div>
