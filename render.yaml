@@ -1,0 +1,8 @@
+services:
+  - type: static
+    name: checklist-ban-hang
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: NODE_VERSION
+        value: 22
