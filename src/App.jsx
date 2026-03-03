@@ -201,7 +201,8 @@ export default function App() {
   );
 
   const [userId, setUserId] = useState("shared-checklist");
-  const [syncStatus, setSyncStatus] = useState("offline"); // offline, syncing, synced
+  const [syncStatus, setSyncStatus] = useState("offline"); // offline, syncing, synced, error
+  const [syncError, setSyncError] = useState(null);
   const [lastSync, setLastSync] = useState(null);
 
   // Firebase Firestore - Real-time sync with shared ID
@@ -211,7 +212,11 @@ export default function App() {
     // Auth vẫn chạy để đảm bảo có quyền truy cập Firestore (theo rules)
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        signInAnonymously(auth).catch(err => console.error("Auth lỗi:", err));
+        signInAnonymously(auth).catch(err => {
+          console.error("Auth lỗi:", err);
+          setSyncStatus("error");
+          setSyncError("Auth failed: " + err.message);
+        });
       }
     });
 
@@ -227,9 +232,11 @@ export default function App() {
         }
         setSyncStatus("synced");
         setLastSync(new Date());
+        setSyncError(null);
       } catch (err) {
         console.error("Load từ Firestore lỗi:", err);
-        setSyncStatus("offline");
+        setSyncStatus("error");
+        setSyncError("Load fail: " + err.message);
       }
     };
 
@@ -262,14 +269,16 @@ export default function App() {
 
     if (userId) {
       setSyncStatus("syncing");
-      setDoc(doc(db, "checklists", userId), { checked }, { merge: true })
+      setDoc(doc(db, "checklists", userId), { checked, updatedAt: new Date() }, { merge: true })
         .then(() => {
           setSyncStatus("synced");
           setLastSync(new Date());
+          setSyncError(null);
         })
         .catch(err => {
           console.error("Sync lỗi:", err);
-          setSyncStatus("offline");
+          setSyncStatus("error");
+          setSyncError("Update fail: " + err.message);
         });
     }
   }, [checked, userId]);
@@ -331,6 +340,7 @@ export default function App() {
             {syncStatus === "synced" && `☁️ Synced ${lastSync ? 'at ' + lastSync.toLocaleTimeString() : ''}`}
             {syncStatus === "syncing" && "⏳ Syncing..."}
             {syncStatus === "offline" && "📱 Offline (localStorage)"}
+            {syncStatus === "error" && <span style={{ color: "#ef4444" }}>❌ Error: {syncError}</span>}
           </div>
 
           {/* PROGRESS */}
