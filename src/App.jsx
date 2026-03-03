@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { 
-  auth, db, signInAnonymously, onAuthStateChanged, 
-  doc, setDoc, getDoc, onSnapshot 
+import {
+  auth, db, signInAnonymously, onAuthStateChanged,
+  doc, setDoc, getDoc, onSnapshot
 } from "./firebase";
 
 const SECTIONS = [
@@ -188,70 +188,78 @@ const PRIORITY_CONFIG = {
 
 export default function App() {
   const totalItems = SECTIONS.reduce((sum, s) => sum + s.items.length, 0);
-  
+
   // Load từ localStorage khi mount
   const [checked, setChecked] = useState(() => {
     const saved = localStorage.getItem("checklist_checked");
     return saved ? JSON.parse(saved) : {};
   });
-  
+
   const [filter, setFilter] = useState("all");
   const [openSections, setOpenSections] = useState(
     Object.fromEntries(SECTIONS.map((s) => [s.id, true]))
   );
-  
-  const [userId, setUserId] = useState(null);
+
+  const [userId, setUserId] = useState("shared-checklist");
   const [syncStatus, setSyncStatus] = useState("offline"); // offline, syncing, synced
   const [lastSync, setLastSync] = useState(null);
 
-  // Firebase Auth - Auto login
+  // Firebase Firestore - Real-time sync with shared ID
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setUserId(user.uid);
-        setSyncStatus("syncing");
-        
-        // Load từ Firestore
-        try {
-          const docRef = doc(db, "checklists", user.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const firebaseData = docSnap.data().checked || {};
-            setChecked(firebaseData);
-            localStorage.setItem("checklist_checked", JSON.stringify(firebaseData));
-          }
-          setSyncStatus("synced");
-          setLastSync(new Date());
-        } catch (err) {
-          console.error("Load từ Firestore lỗi:", err);
-          setSyncStatus("offline");
-        }
-        
-        // Real-time listen changes từ Firestore
-        const unsubscribeFirestore = onSnapshot(doc(db, "checklists", user.uid), (doc) => {
-          if (doc.exists()) {
-            const firebaseData = doc.data().checked || {};
-            setChecked(firebaseData);
-            localStorage.setItem("checklist_checked", JSON.stringify(firebaseData));
-            setSyncStatus("synced");
-            setLastSync(new Date());
-          }
-        });
-        
-        return () => unsubscribeFirestore();
-      } else {
-        // Auto login anonymous
+    setSyncStatus("syncing");
+
+    // Auth vẫn chạy để đảm bảo có quyền truy cập Firestore (theo rules)
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
         signInAnonymously(auth).catch(err => console.error("Auth lỗi:", err));
       }
     });
-    
-    return () => unsubscribe();
+
+    // Load dữ liệu ban đầu từ Firestore
+    const initLoad = async () => {
+      try {
+        const docRef = doc(db, "checklists", userId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const firebaseData = docSnap.data().checked || {};
+          setChecked(firebaseData);
+          localStorage.setItem("checklist_checked", JSON.stringify(firebaseData));
+        }
+        setSyncStatus("synced");
+        setLastSync(new Date());
+      } catch (err) {
+        console.error("Load từ Firestore lỗi:", err);
+        setSyncStatus("offline");
+      }
+    };
+
+    initLoad();
+
+    // Lắng nghe thay đổi real-time từ Firestore dựa trên userId (hiện là mã chung)
+    const unsubscribeFirestore = onSnapshot(doc(db, "checklists", userId), (doc) => {
+      if (doc.exists()) {
+        const firebaseData = doc.data().checked || {};
+        // Chỉ cập nhật state nếu dữ liệu khác với hiện tại để tránh loop vô tận
+        setChecked(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(firebaseData)) return prev;
+          return firebaseData;
+        });
+        localStorage.setItem("checklist_checked", JSON.stringify(firebaseData));
+        setSyncStatus("synced");
+        setLastSync(new Date());
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeFirestore();
+    };
   }, []);
 
   // Lưu checked vào localStorage + Firestore
   useEffect(() => {
     localStorage.setItem("checklist_checked", JSON.stringify(checked));
-    
+
     if (userId) {
       setSyncStatus("syncing");
       setDoc(doc(db, "checklists", userId), { checked }, { merge: true })
@@ -310,13 +318,13 @@ export default function App() {
           <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 28 }}>
             {totalItems} chức năng · 10 nhóm · Tick vào để đánh dấu hoàn thành
           </p>
-          
+
           {/* SYNC STATUS */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontSize: 12, color: "#64748b" }}>
-            <span style={{ 
-              display: "inline-block", 
-              width: 8, 
-              height: 8, 
+            <span style={{
+              display: "inline-block",
+              width: 8,
+              height: 8,
               borderRadius: "50%",
               background: syncStatus === "synced" ? "#10b981" : syncStatus === "syncing" ? "#f59e0b" : "#64748b"
             }}></span>
