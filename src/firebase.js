@@ -3,14 +3,15 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 
 // Firebase configuration từ Firebase Console
+// Firebase configuration sử dụng biến môi trường từ .env.local
 const firebaseConfig = {
-  apiKey: "AIzaSyDDM1i1nBbgPdrPLVd0zmqwem6cGJ1j4SQ",
-  authDomain: "checklist-ban-hang.firebaseapp.com",
-  projectId: "checklist-ban-hang",
-  storageBucket: "checklist-ban-hang.firebasestorage.app",
-  messagingSenderId: "305854036121",
-  appId: "1:305854036121:web:05b8caff7da0d1a3372008",
-  measurementId: "G-1T426EVVGT"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase
