@@ -66,6 +66,7 @@ const SECTIONS = [
     title: "Xử Lý Đơn Hàng",
     color: "#8b5cf6",
     items: [
+      { id: "o0", text: "Tạo đơn hàng & Lưu database (Order creation)", priority: "must" },
       { id: "o1", text: "Luồng trạng thái: Chờ duyệt -> Giao -> Nhận", priority: "must" },
       { id: "o3", text: "Hủy đơn hàng & Hoàn tồn kho", priority: "must" },
       { id: "o4", text: "Quy trình Đổi trả & Hoàn tiền (Refund)", priority: "should" },
